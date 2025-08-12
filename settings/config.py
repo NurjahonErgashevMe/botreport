@@ -18,8 +18,28 @@ GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Report')
 
+# S3 Storage настройки
+S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
+S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
+S3_REGION = os.getenv('S3_REGION', 'us-east-1')
+
 # Настройки бота
 MAX_PHOTOS = 3
+
+# Google Sheets структура
+SHEETS_START_ROW = 1
+SHEETS_COLUMNS = {
+    'DATE': 'A',        # Дата
+    'TIME': 'B',        # Время
+    'CATEGORY': 'C',    # Категория
+    'MASTER': 'D',      # Мастер
+    'PHOTO_1': 'E',     # Фото 1
+    'PHOTO_2': 'F',     # Фото 2
+    'PHOTO_3': 'G',     # Фото 3
+    'COMMENT': 'H'      # Комментарий
+}
 
 # Проверка обязательных переменных
 if not BOT_TOKEN:
@@ -30,3 +50,7 @@ if not TELEGRAM_ADMIN_ID:
 
 if not SPREADSHEET_ID:
     raise ValueError("SPREADSHEET_ID не найден в переменных окружения")
+
+# Проверка S3 переменных
+if not all([S3_ENDPOINT_URL, S3_BUCKET_NAME, S3_ACCESS_KEY, S3_SECRET_KEY]):
+    raise ValueError("Не все S3 переменные настроены в .env файле")

@@ -1,7 +1,7 @@
 """
 Клавиатуры для Telegram-бота
 """
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from typing import List, Tuple
 
 from .enums import CallbackData, ButtonTexts, Categories
@@ -11,154 +11,115 @@ class Keyboards:
     """Класс для создания клавиатур"""
     
     @staticmethod
-    def main_menu_admin() -> InlineKeyboardMarkup:
+    def main_menu_admin() -> ReplyKeyboardMarkup:
         """Главное меню для администратора"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.SEND_COMPLAINT.value,
-                callback_data=CallbackData.START_COMPLAINT.value
-            )],
-            [InlineKeyboardButton(
-                text=ButtonTexts.MANAGE_EMPLOYEES.value,
-                callback_data=CallbackData.EMPLOYEES_MENU.value
-            )]
+            [KeyboardButton(text=ButtonTexts.SEND_COMPLAINT.value)],
+            [KeyboardButton(text=ButtonTexts.MANAGE_EMPLOYEES.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def main_menu_employee() -> InlineKeyboardMarkup:
+    def main_menu_employee() -> ReplyKeyboardMarkup:
         """Главное меню для сотрудника"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.SEND_COMPLAINT.value,
-                callback_data=CallbackData.START_COMPLAINT.value
-            )]
+            [KeyboardButton(text=ButtonTexts.SEND_COMPLAINT.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def employees_menu() -> InlineKeyboardMarkup:
+    def employees_menu() -> ReplyKeyboardMarkup:
         """Меню управления сотрудниками"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.ADD_EMPLOYEE.value,
-                callback_data=CallbackData.ADD_EMPLOYEE.value
-            )],
-            [InlineKeyboardButton(
-                text=ButtonTexts.LIST_EMPLOYEES.value,
-                callback_data=CallbackData.LIST_EMPLOYEES.value
-            )],
-            [InlineKeyboardButton(
-                text=ButtonTexts.DELETE_EMPLOYEE.value,
-                callback_data=CallbackData.DELETE_EMPLOYEE.value
-            )],
-            [InlineKeyboardButton(
-                text=ButtonTexts.BACK_TO_MAIN.value,
-                callback_data=CallbackData.BACK_TO_MAIN.value
-            )]
+            [KeyboardButton(text=ButtonTexts.ADD_EMPLOYEE.value)],
+            [KeyboardButton(text=ButtonTexts.LIST_EMPLOYEES.value)],
+            [KeyboardButton(text=ButtonTexts.DELETE_EMPLOYEE.value)],
+            [KeyboardButton(text=ButtonTexts.BACK_TO_MAIN.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def back_to_employees() -> InlineKeyboardMarkup:
+    def back_to_employees() -> ReplyKeyboardMarkup:
         """Кнопка возврата к меню сотрудников"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.BACK_TO_EMPLOYEES.value,
-                callback_data=CallbackData.BACK_TO_EMPLOYEES.value
-            )]
+            [KeyboardButton(text=ButtonTexts.BACK_TO_EMPLOYEES.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def back_to_main() -> InlineKeyboardMarkup:
+    def back_to_main() -> ReplyKeyboardMarkup:
         """Кнопка возврата в главное меню"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.BACK_TO_MAIN.value,
-                callback_data=CallbackData.BACK_TO_MAIN.value
-            )]
+            [KeyboardButton(text=ButtonTexts.BACK_TO_MAIN.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def categories() -> InlineKeyboardMarkup:
+    def categories() -> ReplyKeyboardMarkup:
         """Клавиатура с категориями"""
         buttons = []
         for category in Categories:
-            buttons.append([InlineKeyboardButton(
-                text=category.value,
-                callback_data=f"{CallbackData.CATEGORY_PREFIX.value}{category.value}"
-            )])
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
-    
-    @staticmethod
-    def masters(masters_list: List[Tuple[int, int, str]]) -> InlineKeyboardMarkup:
-        """
-        Клавиатура с мастерами
+            buttons.append([KeyboardButton(text=category.value)])
         
-        Args:
-            masters_list: Список кортежей (id, telegram_id, name)
-        """
-        buttons = []
-        for _, _, name in masters_list:
-            buttons.append([InlineKeyboardButton(
-                text=name,
-                callback_data=f"{CallbackData.MASTER_PREFIX.value}{name}"
-            )])
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        # Добавляем кнопку "Назад"
+        buttons.append([KeyboardButton(text=ButtonTexts.BACK_TO_MAIN.value)])
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    
+
     
     @staticmethod
-    def photos() -> InlineKeyboardMarkup:
-        """Клавиатура для работы с фото"""
+    def photos() -> ReplyKeyboardMarkup:
+        """Клавиатура для работы с фото (когда фото еще нет)"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.ADD_PHOTO.value,
-                callback_data=CallbackData.ADD_PHOTO.value
-            )],
-            [InlineKeyboardButton(
-                text=ButtonTexts.SKIP_PHOTOS.value,
-                callback_data=CallbackData.SKIP_PHOTOS.value
-            )]
+            [KeyboardButton(text=ButtonTexts.SKIP_PHOTOS.value)],
+            [KeyboardButton(text=ButtonTexts.CANCEL_COMPLAINT.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def photos_next() -> InlineKeyboardMarkup:
+    def photos_with_finish() -> ReplyKeyboardMarkup:
+        """Клавиатура для работы с фото (когда уже есть фото)"""
+        buttons = [
+            [KeyboardButton(text=ButtonTexts.FINISH_PHOTOS.value)],
+            [KeyboardButton(text=ButtonTexts.CANCEL_COMPLAINT.value)]
+        ]
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    
+    @staticmethod
+    def photos_next() -> ReplyKeyboardMarkup:
         """Клавиатура для перехода к комментарию после фото"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.NEXT_TO_COMMENT.value,
-                callback_data=CallbackData.SKIP_PHOTOS.value
-            )]
+            [KeyboardButton(text=ButtonTexts.NEXT_TO_COMMENT.value)],
+            [KeyboardButton(text=ButtonTexts.CANCEL_COMPLAINT.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def preview() -> InlineKeyboardMarkup:
+    def preview() -> ReplyKeyboardMarkup:
         """Клавиатура для предварительного просмотра"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.SAVE.value,
-                callback_data=CallbackData.SAVE_COMPLAINT.value
-            )],
-            [InlineKeyboardButton(
-                text=ButtonTexts.DELETE_AND_RESTART.value,
-                callback_data=CallbackData.RESTART_COMPLAINT.value
-            )]
+            [KeyboardButton(text=ButtonTexts.SAVE.value)],
+            [KeyboardButton(text=ButtonTexts.DELETE_AND_RESTART.value)],
+            [KeyboardButton(text=ButtonTexts.CANCEL_COMPLAINT.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
-    def send_another() -> InlineKeyboardMarkup:
+    def send_another() -> ReplyKeyboardMarkup:
         """Кнопка для отправки ещё одного замечания"""
         buttons = [
-            [InlineKeyboardButton(
-                text=ButtonTexts.SEND_ANOTHER.value,
-                callback_data=CallbackData.START_COMPLAINT.value
-            )]
+            [KeyboardButton(text=ButtonTexts.SEND_ANOTHER.value)],
+            [KeyboardButton(text=ButtonTexts.BACK_TO_MAIN.value)]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=buttons)
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    
+    @staticmethod
+    def comment_input() -> ReplyKeyboardMarkup:
+        """Клавиатура для ввода комментария"""
+        buttons = [
+            [KeyboardButton(text=ButtonTexts.CANCEL_COMPLAINT.value)]
+        ]
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
     
     @staticmethod
     def delete_employees(employees: List[Tuple[int, int, str]]) -> InlineKeyboardMarkup:
@@ -176,12 +137,6 @@ class Keyboards:
                 text=str(i),
                 callback_data=f"delete_emp_{emp_id}"
             )])
-        
-        # Кнопка возврата
-        buttons.append([InlineKeyboardButton(
-            text=ButtonTexts.BACK_TO_EMPLOYEES.value,
-            callback_data=CallbackData.BACK_TO_EMPLOYEES.value
-        )])
         
         return InlineKeyboardMarkup(inline_keyboard=buttons)
     

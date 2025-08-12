@@ -12,7 +12,7 @@ from settings.database import Database
 from utils.google_sheets import GoogleSheetsManager
 from .states import ComplaintStates, EmployeeStates
 from .keyboards import Keyboards
-from .enums import CallbackData, Messages, Categories
+from .enums import CallbackData, Messages, Categories, ButtonTexts
 from utils.media_handler import MediaHandler
 
 logger = logging.getLogger(__name__)
@@ -58,76 +58,99 @@ async def cmd_start(message: Message, state: FSMContext):
         keyboard = Keyboards.main_menu_admin()
         text = Messages.WELCOME_ADMIN.value
     else:
+        # Получаем имя сотрудника для персонализированного приветствия
+        employee = await db.get_employee_by_telegram_id(user_id)
+        if employee:
+            employee_name = employee[1]  # employee[1] содержит имя сотрудника
+            text = f"👋 Здравствуйте, {employee_name}!\n\n{Messages.WELCOME_EMPLOYEE.value}"
+        else:
+            text = Messages.WELCOME_EMPLOYEE.value
+        
         keyboard = Keyboards.main_menu_employee()
-        text = Messages.WELCOME_EMPLOYEE.value
     
     await message.answer(text, reply_markup=keyboard)
 
 
-@router.callback_query(F.data == CallbackData.BACK_TO_MAIN.value)
-async def back_to_main(callback: CallbackQuery, state: FSMContext):
+# === ОБРАБОТЧИКИ КНОПОК ГЛАВНОГО МЕНЮ ===
+
+@router.message(F.text == ButtonTexts.BACK_TO_MAIN.value)
+async def back_to_main(message: Message, state: FSMContext):
     """Возврат в главное меню"""
-    await callback.answer()
     await state.clear()
     
-    user_id = callback.from_user.id
+    user_id = message.from_user.id
     
     if await is_admin(user_id):
         keyboard = Keyboards.main_menu_admin()
         text = Messages.WELCOME_ADMIN.value
     else:
+        # Получаем имя сотрудника для персонализированного приветствия
+        employee = await db.get_employee_by_telegram_id(user_id)
+        if employee:
+            employee_name = employee[1]  # employee[1] содержит имя сотрудника
+            text = f"👋 Здравствуйте, {employee_name}!\n\n{Messages.WELCOME_EMPLOYEE.value}"
+        else:
+            text = Messages.WELCOME_EMPLOYEE.value
+        
         keyboard = Keyboards.main_menu_employee()
-        text = Messages.WELCOME_EMPLOYEE.value
     
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await message.answer(text, reply_markup=keyboard)
 
-
-# === УПРАВЛЕНИЕ СОТРУДНИКАМИ ===
-
-@router.callback_query(F.data == CallbackData.EMPLOYEES_MENU.value)
-async def employees_menu(callback: CallbackQuery, state: FSMContext):
-    """Меню управления сотрудниками"""
-    await callback.answer()
+@router.message(F.text == ButtonTexts.SEND_COMPLAINT.value)
+async def start_complaint_handler(message: Message, state: FSMContext):
+    """Обработчик кнопки отправки замечания"""
+    # Проверяем доступ
+    if not await has_access(message.from_user.id):
+        await message.answer("❌ Доступ запрещён")
+        return
     
+    await start_complaint_process(message, state)
+
+@router.message(F.text == ButtonTexts.MANAGE_EMPLOYEES.value)
+async def employees_menu_handler(message: Message, state: FSMContext):
+    """Обработчик кнопки управления сотрудниками"""
     # Проверяем права администратора
-    if not await is_admin(callback.from_user.id):
-        await callback.answer("❌ Недостаточно прав", show_alert=True)
+    if not await is_admin(message.from_user.id):
+        await message.answer("❌ Недостаточно прав")
         return
     
     await state.clear()
     keyboard = Keyboards.employees_menu()
-    await callback.message.edit_text(Messages.EMPLOYEES_MENU.value, reply_markup=keyboard)
+    await message.answer(Messages.EMPLOYEES_MENU.value, reply_markup=keyboard)
 
 
-@router.callback_query(F.data == CallbackData.BACK_TO_EMPLOYEES.value)
-async def back_to_employees(callback: CallbackQuery, state: FSMContext):
+# === УПРАВЛЕНИЕ СОТРУДНИКАМИ ===
+
+@router.message(F.text == ButtonTexts.BACK_TO_EMPLOYEES.value)
+async def back_to_employees(message: Message, state: FSMContext):
     """Возврат в меню сотрудников"""
-    await callback.answer()
     await state.clear()
     
     keyboard = Keyboards.employees_menu()
-    await callback.message.edit_text(Messages.EMPLOYEES_MENU.value, reply_markup=keyboard)
+    await message.answer(Messages.EMPLOYEES_MENU.value, reply_markup=keyboard)
 
-
-@router.callback_query(F.data == CallbackData.ADD_EMPLOYEE.value)
-async def add_employee_start(callback: CallbackQuery, state: FSMContext):
+@router.message(F.text == ButtonTexts.ADD_EMPLOYEE.value)
+async def add_employee_start(message: Message, state: FSMContext):
     """Начало добавления сотрудника"""
-    await callback.answer()
-    
     await state.set_state(EmployeeStates.entering_employee_id)
-    await callback.message.edit_text(Messages.ADD_EMPLOYEE_ID.value)
+    await message.answer(Messages.ADD_EMPLOYEE_ID.value, reply_markup=Keyboards.back_to_employees())
 
 
 @router.message(StateFilter(EmployeeStates.entering_employee_id))
 async def add_employee_id(message: Message, state: FSMContext):
     """Ввод ID сотрудника"""
+    # Проверяем на кнопку "Назад"
+    if message.text == ButtonTexts.BACK_TO_EMPLOYEES.value:
+        await back_to_employees(message, state)
+        return
+    
     try:
         employee_id = int(message.text.strip())
         
-        # Проверяем, не существует ли уже такой сотрудник
+        # Проверяем, не существует ли уже активный сотрудник с таким ID
         existing = await db.get_employee_by_telegram_id(employee_id)
         if existing:
-            await message.answer("❌ Сотрудник с таким ID уже существует!")
+            await message.answer("❌ Активный сотрудник с таким ID уже существует!")
             return
         
         await state.update_data(employee_id=employee_id)
@@ -141,6 +164,11 @@ async def add_employee_id(message: Message, state: FSMContext):
 @router.message(StateFilter(EmployeeStates.entering_employee_name))
 async def add_employee_name(message: Message, state: FSMContext):
     """Ввод имени сотрудника"""
+    # Проверяем на кнопку "Назад"
+    if message.text == ButtonTexts.BACK_TO_EMPLOYEES.value:
+        await back_to_employees(message, state)
+        return
+    
     name = message.text.strip()
     
     if len(name) < 2:
@@ -154,25 +182,23 @@ async def add_employee_name(message: Message, state: FSMContext):
     success = await db.add_employee(employee_id, name)
     
     if success:
-        await message.answer(Messages.EMPLOYEE_ADDED.value, reply_markup=Keyboards.back_to_employees())
-        logger.info(f"Добавлен сотрудник: {name} (ID: {employee_id})")
+        await message.answer(Messages.EMPLOYEE_ADDED.value, reply_markup=Keyboards.employees_menu())
+        logger.info(f"Сотрудник обработан: {name} (ID: {employee_id})")
     else:
-        await message.answer("❌ Ошибка добавления сотрудника", reply_markup=Keyboards.back_to_employees())
+        await message.answer("❌ Ошибка добавления сотрудника", reply_markup=Keyboards.employees_menu())
     
     await state.clear()
 
 
-@router.callback_query(F.data == CallbackData.LIST_EMPLOYEES.value)
-async def list_employees(callback: CallbackQuery):
+@router.message(F.text == ButtonTexts.LIST_EMPLOYEES.value)
+async def list_employees(message: Message):
     """Показ списка сотрудников"""
-    await callback.answer()
-    
     employees = await db.get_employees()
     
     if not employees:
-        await callback.message.edit_text(
+        await message.answer(
             Messages.NO_EMPLOYEES.value,
-            reply_markup=Keyboards.back_to_employees()
+            reply_markup=Keyboards.employees_menu()
         )
         return
     
@@ -181,24 +207,22 @@ async def list_employees(callback: CallbackQuery):
     for _, telegram_id, name in employees:
         text += f"• {name} - _{telegram_id}_\n"
     
-    await callback.message.edit_text(
+    await message.answer(
         text,
-        reply_markup=Keyboards.back_to_employees(),
+        reply_markup=Keyboards.employees_menu(),
         parse_mode="Markdown"
     )
 
 
-@router.callback_query(F.data == CallbackData.DELETE_EMPLOYEE.value)
-async def delete_employee_start(callback: CallbackQuery):
+@router.message(F.text == ButtonTexts.DELETE_EMPLOYEE.value)
+async def delete_employee_start(message: Message):
     """Начало удаления сотрудника"""
-    await callback.answer()
-    
     employees = await db.get_employees()
     
     if not employees:
-        await callback.message.edit_text(
+        await message.answer(
             Messages.NO_EMPLOYEES.value,
-            reply_markup=Keyboards.back_to_employees()
+            reply_markup=Keyboards.employees_menu()
         )
         return
     
@@ -208,7 +232,7 @@ async def delete_employee_start(callback: CallbackQuery):
         text += f"{i}. {name}\n"
     
     keyboard = Keyboards.delete_employees(employees)
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await message.answer(text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("delete_emp_"))
@@ -228,10 +252,8 @@ async def confirm_delete_employee(callback: CallbackQuery, state: FSMContext):
             break
     
     if not employee_info:
-        await callback.message.edit_text(
-            "❌ Сотрудник не найден",
-            reply_markup=Keyboards.back_to_employees()
-        )
+        await callback.message.edit_text("❌ Сотрудник не найден")
+        await callback.message.answer("Возвращаемся в меню сотрудников", reply_markup=Keyboards.employees_menu())
         return
     
     # Сохраняем ID для подтверждения
@@ -252,10 +274,8 @@ async def delete_employee_confirmed(callback: CallbackQuery, state: FSMContext):
     employee_id = data.get('delete_employee_id')
     
     if not employee_id:
-        await callback.message.edit_text(
-            "❌ Ошибка удаления",
-            reply_markup=Keyboards.back_to_employees()
-        )
+        await callback.message.edit_text("❌ Ошибка удаления")
+        await callback.message.answer("Возвращаемся в меню сотрудников", reply_markup=Keyboards.employees_menu())
         return
     
     success = await db.delete_employee(employee_id)
@@ -265,7 +285,8 @@ async def delete_employee_confirmed(callback: CallbackQuery, state: FSMContext):
     else:
         text = "❌ Ошибка удаления сотрудника"
     
-    await callback.message.edit_text(text, reply_markup=Keyboards.back_to_employees())
+    await callback.message.edit_text(text)
+    await callback.message.answer("Возвращаемся в меню сотрудников", reply_markup=Keyboards.employees_menu())
     await state.clear()
 
 
@@ -275,91 +296,76 @@ async def cancel_delete_employee(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
     
-    keyboard = Keyboards.employees_menu()
-    await callback.message.edit_text(Messages.EMPLOYEES_MENU.value, reply_markup=keyboard)
+    await callback.message.edit_text("Удаление отменено")
+    await callback.message.answer(Messages.EMPLOYEES_MENU.value, reply_markup=Keyboards.employees_menu())
 
 
 # === ПРОЦЕСС ПОДАЧИ ЖАЛОБЫ ===
 
-@router.callback_query(F.data == CallbackData.START_COMPLAINT.value)
-async def start_complaint(callback: CallbackQuery, state: FSMContext):
+async def start_complaint_process(message: Message, state: FSMContext):
     """Начало процесса подачи жалобы"""
-    await callback.answer()
-    
-    # Проверяем доступ
-    if not await has_access(callback.from_user.id):
-        await callback.answer("❌ Доступ запрещён", show_alert=True)
-        return
-    
     await state.set_state(ComplaintStates.choosing_category)
     
     keyboard = Keyboards.categories()
-    await callback.message.edit_text(Messages.CHOOSE_CATEGORY.value, reply_markup=keyboard)
+    await message.answer(Messages.CHOOSE_CATEGORY.value, reply_markup=keyboard)
 
 
-@router.callback_query(F.data.startswith(CallbackData.CATEGORY_PREFIX.value), StateFilter(ComplaintStates.choosing_category))
-async def choose_category(callback: CallbackQuery, state: FSMContext):
+@router.message(StateFilter(ComplaintStates.choosing_category))
+async def choose_category(message: Message, state: FSMContext):
     """Выбор категории"""
-    await callback.answer()
+    # Проверяем на кнопку "Назад"
+    if message.text == ButtonTexts.BACK_TO_MAIN.value:
+        await back_to_main(message, state)
+        return
     
-    category = callback.data.replace(CallbackData.CATEGORY_PREFIX.value, "")
+    # Проверяем, что выбрана валидная категория
+    valid_categories = [cat.value for cat in Categories]
+    if message.text not in valid_categories:
+        await message.answer("❌ Пожалуйста, выберите категорию из предложенных вариантов:")
+        return
+    
+    category = message.text
     await state.update_data(category=category)
     
-    # Получаем список мастеров (сотрудников)
-    employees = await db.get_employees()
+    # Автоматически определяем мастера по Telegram ID отправителя
+    employee = await db.get_employee_by_telegram_id(message.from_user.id)
     
-    if not employees:
-        await callback.message.edit_text(
-            "❌ Список мастеров пуст. Обратитесь к администратору.",
+    if not employee:
+        await message.answer(
+            "❌ Ошибка: вы не найдены в списке сотрудников. Обратитесь к администратору.",
             reply_markup=Keyboards.back_to_main()
         )
         return
     
-    await state.set_state(ComplaintStates.choosing_master)
-    
-    text = f"✅ Категория: {category}\n\n{Messages.CHOOSE_MASTER.value}"
-    keyboard = Keyboards.masters(employees)
-    
-    await callback.message.edit_text(text, reply_markup=keyboard)
-
-
-@router.callback_query(F.data.startswith(CallbackData.MASTER_PREFIX.value), StateFilter(ComplaintStates.choosing_master))
-async def choose_master(callback: CallbackQuery, state: FSMContext):
-    """Выбор мастера"""
-    await callback.answer()
-    
-    master = callback.data.replace(CallbackData.MASTER_PREFIX.value, "")
-    await state.update_data(master=master)
-    
-    data = await state.get_data()
+    master_name = employee[1]  # employee[1] содержит имя сотрудника
+    await state.update_data(master=master_name)
     
     await state.set_state(ComplaintStates.uploading_photos)
     await state.update_data(photos=[])
     
     text = (
-        f"✅ Категория: {data['category']}\n"
-        f"✅ Мастер: {master}\n\n"
+        f"✅ Категория: {category}\n"
+        f"✅ Мастер: {master_name}\n\n"
         f"{Messages.UPLOAD_PHOTOS.value}"
     )
     
     keyboard = Keyboards.photos()
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await message.answer(text, reply_markup=keyboard)
 
 
-@router.callback_query(F.data == CallbackData.ADD_PHOTO.value, StateFilter(ComplaintStates.uploading_photos))
-async def add_photo_prompt(callback: CallbackQuery, state: FSMContext):
-    """Запрос на добавление фото"""
-    await callback.answer()
-    
-    data = await state.get_data()
-    photos_count = len(data.get('photos', []))
-    
-    if photos_count >= 3:  # MAX_PHOTOS
-        await callback.answer("❌ Максимум 3 фотографии", show_alert=True)
-        return
-    
-    text = f"📷 Отправьте фотографию ({photos_count + 1}/3)"
-    await callback.message.edit_text(text)
+
+
+
+@router.message(F.text == ButtonTexts.SKIP_PHOTOS.value, StateFilter(ComplaintStates.uploading_photos))
+async def skip_photos(message: Message, state: FSMContext):
+    """Пропуск загрузки фото"""
+    await state.set_state(ComplaintStates.entering_comment)
+    await message.answer(Messages.ENTER_COMMENT.value, reply_markup=Keyboards.comment_input())
+
+@router.message(F.text == ButtonTexts.CANCEL_COMPLAINT.value)
+async def cancel_complaint(message: Message, state: FSMContext):
+    """Отмена подачи жалобы"""
+    await back_to_main(message, state)
 
 
 @router.message(F.photo, StateFilter(ComplaintStates.uploading_photos))
@@ -372,37 +378,54 @@ async def handle_photo(message: Message, state: FSMContext):
         await message.answer("❌ Максимум 3 фотографии")
         return
     
-    # Получаем URL фотографии
-    photo_url = await media_handler.get_photo_url(message.bot, message.photo[-1])
+    # Получаем информацию о фотографии (без загрузки в S3)
+    photo_info = await media_handler.get_photo_info(message.bot, message.photo[-1])
     
-    if photo_url:
-        photos.append(photo_url)
+    if photo_info:
+        # Сохраняем информацию о фото для последующей загрузки в S3
+        photos.append(photo_info)
         await state.update_data(photos=photos)
         
-        text = f"✅ Фото {len(photos)}/3 загружено\n\nЗагрузите ещё фото или перейдите к комментарию:"
-        
         if len(photos) >= 3:
+            # Если загружено 3 фото - автоматически переходим к комментарию
+            text = f"✅ Фото {len(photos)}/3 загружено\n\nВсе фотографии загружены. Теперь добавьте комментарий:"
             keyboard = Keyboards.photos_next()
         else:
-            keyboard = Keyboards.photos()
+            # Если меньше 3 фото - предлагаем загрузить еще или завершить
+            text = f"✅ Фото {len(photos)}/3 загружено\n\nЗагрузите ещё фото или перейдите к комментарию:"
+            keyboard = Keyboards.photos_with_finish()
         
         await message.answer(text, reply_markup=keyboard)
+        
+        # Логируем информацию о фото
+        logger.info(f"Фото получено: {photo_info['file_id']}, размер: {photo_info['width']}x{photo_info['height']}")
     else:
         await message.answer("❌ Ошибка загрузки фото. Попробуйте ещё раз.")
 
-
-@router.callback_query(F.data == CallbackData.SKIP_PHOTOS.value, StateFilter(ComplaintStates.uploading_photos))
-async def skip_photos(callback: CallbackQuery, state: FSMContext):
-    """Пропуск загрузки фото"""
-    await callback.answer()
-    
+@router.message(F.text == ButtonTexts.NEXT_TO_COMMENT.value, StateFilter(ComplaintStates.uploading_photos))
+async def next_to_comment(message: Message, state: FSMContext):
+    """Переход к комментарию после фото"""
     await state.set_state(ComplaintStates.entering_comment)
-    await callback.message.edit_text(Messages.ENTER_COMMENT.value)
+    await message.answer(Messages.ENTER_COMMENT.value, reply_markup=Keyboards.comment_input())
+
+@router.message(F.text == ButtonTexts.FINISH_PHOTOS.value, StateFilter(ComplaintStates.uploading_photos))
+async def finish_photos(message: Message, state: FSMContext):
+    """Завершение загрузки фото и переход к комментарию"""
+    await state.set_state(ComplaintStates.entering_comment)
+    await message.answer(Messages.ENTER_COMMENT.value, reply_markup=Keyboards.comment_input())
+
+
+
 
 
 @router.message(F.text, StateFilter(ComplaintStates.entering_comment))
 async def handle_text_comment(message: Message, state: FSMContext):
     """Обработка текстового комментария"""
+    # Проверяем на кнопку отмены
+    if message.text == ButtonTexts.CANCEL_COMPLAINT.value:
+        await cancel_complaint(message, state)
+        return
+    
     await state.update_data(comment=message.text)
     await show_preview(message, state)
 
@@ -442,52 +465,86 @@ async def show_preview(message: Message, state: FSMContext):
     await message.answer(preview_text, reply_markup=keyboard)
 
 
-@router.callback_query(F.data == CallbackData.SAVE_COMPLAINT.value, StateFilter(ComplaintStates.preview))
-async def save_complaint(callback: CallbackQuery, state: FSMContext):
+@router.message(F.text == ButtonTexts.SAVE.value, StateFilter(ComplaintStates.preview))
+async def save_complaint(message: Message, state: FSMContext):
     """Сохранение жалобы"""
-    await callback.answer()
-    
     data = await state.get_data()
     
-    # Сохраняем в базу данных
-    db_success = await db.add_complaint(
-        employee_telegram_id=callback.from_user.id,
-        category=data['category'],
-        master_name=data['master'],
-        comment=data['comment'],
-        photo_urls=data.get('photos', [])
-    )
+    # Показываем индикатор загрузки
+    loading_msg = await message.answer("⏳ Обрабатываем замечание...")
     
-    # Сохраняем в Google Sheets
-    sheets_success = await sheets_manager.add_complaint(
-        category=data['category'],
-        master=data['master'],
-        comment=data['comment'],
-        photo_urls=data.get('photos', [])
-    )
-    
-    if db_success and sheets_success:
-        text = Messages.COMPLAINT_SAVED.value
-    elif db_success:
-        text = "✅ Замечание сохранено в базу данных!\n⚠️ Ошибка отправки в Google Sheets."
-    else:
-        text = Messages.COMPLAINT_ERROR.value
-    
-    keyboard = Keyboards.send_another()
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await state.clear()
+    try:
+        # Получаем имя сотрудника
+        employee = await db.get_employee_by_telegram_id(message.from_user.id)
+        employee_name = employee[1] if employee else "unknown"
+        
+        # Загружаем фото в S3 (если есть)
+        photo_urls = []
+        photos_data = data.get('photos', [])
+        
+        if photos_data:
+            photo_urls = await media_handler.upload_photos_to_s3(
+                message.bot, 
+                photos_data, 
+                employee_name
+            )
+        
+        # Сохраняем в базу данных
+        db_success = await db.add_complaint(
+            employee_telegram_id=message.from_user.id,
+            category=data['category'],
+            master_name=data['master'],
+            comment=data['comment'],
+            photo_urls=photo_urls
+        )
+        
+        # Сохраняем в Google Sheets
+        sheets_success = await sheets_manager.add_complaint(
+            category=data['category'],
+            master=data['master'],
+            comment=data['comment'],
+            photo_urls=photo_urls
+        )
+        
+        # Удаляем сообщение с индикатором загрузки
+        await loading_msg.delete()
+        
+        if db_success and sheets_success:
+            text = Messages.COMPLAINT_SAVED.value
+        elif db_success:
+            text = "✅ Замечание сохранено в базу данных!\n⚠️ Ошибка отправки в Google Sheets."
+        else:
+            text = Messages.COMPLAINT_ERROR.value
+        
+        keyboard = Keyboards.send_another()
+        await message.answer(text, reply_markup=keyboard)
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Ошибка сохранения жалобы: {e}")
+        await loading_msg.delete()
+        await message.answer(Messages.COMPLAINT_ERROR.value, reply_markup=Keyboards.send_another())
+        await state.clear()
 
-
-@router.callback_query(F.data == CallbackData.RESTART_COMPLAINT.value)
-async def restart_complaint(callback: CallbackQuery, state: FSMContext):
+@router.message(F.text == ButtonTexts.DELETE_AND_RESTART.value, StateFilter(ComplaintStates.preview))
+async def restart_complaint(message: Message, state: FSMContext):
     """Перезапуск процесса подачи жалобы"""
-    await callback.answer()
     await state.clear()
-    await start_complaint(callback, state)
+    await start_complaint_process(message, state)
 
+@router.message(F.text == ButtonTexts.SEND_ANOTHER.value)
+async def send_another_complaint(message: Message, state: FSMContext):
+    """Отправка ещё одного замечания"""
+    await start_complaint_process(message, state)
+
+
+
+
+
+# === ОБРАБОТЧИК НЕИЗВЕСТНЫХ СООБЩЕНИЙ ===
 
 @router.message()
-async def handle_other_messages(message: Message):
+async def handle_other_messages(message: Message, state: FSMContext):
     """Обработчик прочих сообщений"""
     if message.chat.type != "private":
         return
@@ -495,6 +552,12 @@ async def handle_other_messages(message: Message):
     # Проверяем доступ
     if not await has_access(message.from_user.id):
         await message.answer(Messages.ACCESS_DENIED.value)
+        return
+    
+    # Если пользователь в состоянии загрузки фото, но отправил текст
+    current_state = await state.get_state()
+    if current_state == ComplaintStates.uploading_photos:
+        await message.answer("📷 Отправьте фотографию или нажмите кнопку для пропуска/перехода к комментарию.")
         return
     
     text = "❓ Не понимаю команду.\n\nИспользуйте /start для начала работы с ботом."

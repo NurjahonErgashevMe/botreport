@@ -54,7 +54,7 @@ class Database:
     
     async def add_employee(self, telegram_id: int, name: str) -> bool:
         """
-        Добавление нового сотрудника
+        Добавление нового сотрудника или реактивация существующего
         
         Args:
             telegram_id: Telegram ID сотрудника
@@ -65,17 +65,36 @@ class Database:
         """
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    "INSERT INTO employees (telegram_id, name) VALUES (?, ?)",
-                    (telegram_id, name)
+                # Проверяем, существует ли уже сотрудник (включая неактивных)
+                cursor = await db.execute(
+                    "SELECT id, is_active FROM employees WHERE telegram_id = ?",
+                    (telegram_id,)
                 )
-                await db.commit()
-                logger.info(f"Сотрудник добавлен: {name} (ID: {telegram_id})")
-                return True
+                existing = await cursor.fetchone()
                 
-        except sqlite3.IntegrityError:
-            logger.warning(f"Сотрудник с ID {telegram_id} уже существует")
-            return False
+                if existing:
+                    # Если сотрудник существует, но неактивен - реактивируем
+                    if not existing[1]:  # is_active = 0
+                        await db.execute(
+                            "UPDATE employees SET name = ?, is_active = 1 WHERE telegram_id = ?",
+                            (name, telegram_id)
+                        )
+                        await db.commit()
+                        logger.info(f"Сотрудник реактивирован: {name} (ID: {telegram_id})")
+                        return True
+                    else:
+                        logger.warning(f"Активный сотрудник с ID {telegram_id} уже существует")
+                        return False
+                else:
+                    # Добавляем нового сотрудника
+                    await db.execute(
+                        "INSERT INTO employees (telegram_id, name) VALUES (?, ?)",
+                        (telegram_id, name)
+                    )
+                    await db.commit()
+                    logger.info(f"Сотрудник добавлен: {name} (ID: {telegram_id})")
+                    return True
+                
         except Exception as e:
             logger.error(f"Ошибка добавления сотрудника: {e}")
             return False
@@ -149,6 +168,42 @@ class Database:
                     
         except Exception as e:
             logger.error(f"Ошибка удаления сотрудника: {e}")
+            return False
+    
+    async def delete_employee_permanently(self, employee_id: int) -> bool:
+        """
+        Полное физическое удаление сотрудника из базы данных
+        
+        Args:
+            employee_id: ID сотрудника в базе данных
+            
+        Returns:
+            bool: Успешность операции
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Сначала удаляем связанные жалобы
+                await db.execute(
+                    "DELETE FROM complaints WHERE employee_id = ?",
+                    (employee_id,)
+                )
+                
+                # Затем удаляем самого сотрудника
+                cursor = await db.execute(
+                    "DELETE FROM employees WHERE id = ?",
+                    (employee_id,)
+                )
+                await db.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Сотрудник с ID {employee_id} полностью удален")
+                    return True
+                else:
+                    logger.warning(f"Сотрудник с ID {employee_id} не найден")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Ошибка полного удаления сотрудника: {e}")
             return False
     
     async def is_employee_active(self, telegram_id: int) -> bool:

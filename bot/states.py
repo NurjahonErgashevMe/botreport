@@ -10,9 +10,6 @@ class ComplaintStates(StatesGroup):
     # Выбор категории
     choosing_category = State()
     
-    # Выбор мастера
-    choosing_master = State()
-    
     # Загрузка фотографий
     uploading_photos = State()
     
