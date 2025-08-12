@@ -448,9 +448,11 @@ async def show_preview(message: Message, state: FSMContext):
     
     await state.set_state(ComplaintStates.preview)
     
-    photos_text = ""
-    if data.get('photos'):
-        photos_text = f"\n📷 Фотографий: {len(data['photos'])}"
+    photos = data.get('photos', [])
+    if photos:
+        photos_text = f"\n📷 Фотографий: {len(photos)}"
+    else:
+        photos_text = "\n📷 Фотографий: ❌"
     
     preview_text = (
         "📋 Предварительный просмотр замечания:\n\n"
