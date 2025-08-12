@@ -6,3 +6,5 @@ google-auth==2.25.2
 boto3==1.34.34
 Pillow==10.2.0
 aiohttp==3.9.1
+SpeechRecognition==3.10.1
+pydub==0.25.1

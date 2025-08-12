@@ -2,6 +2,8 @@
 import logging
 import asyncio
 import uuid
+import os
+import tempfile
 from datetime import datetime
 from typing import Optional
 from aiogram.types import PhotoSize, Voice
@@ -9,6 +11,8 @@ from aiogram import Bot
 import boto3
 from botocore.exceptions import ClientError
 import aiohttp
+import speech_recognition as sr
+from pydub import AudioSegment
 
 from settings.config import (
     S3_ENDPOINT_URL, S3_BUCKET_NAME, S3_ACCESS_KEY, 
@@ -147,8 +151,72 @@ class MediaHandler:
         return s3_urls
     
     async def process_voice_message(self, bot: Bot, voice: Voice) -> Optional[str]:
+        """Распознавание голосового сообщения в текст"""
+        ogg_path = None
+        wav_path = None
+        
         try:
-            return "[Голосовое сообщение - функция распознавания в разработке]"
+            # Скачиваем голосовое сообщение
+            file_info = await bot.get_file(voice.file_id)
+            ogg_path = os.path.join(tempfile.gettempdir(), f"voice_{voice.file_id}.ogg")
+            wav_path = os.path.join(tempfile.gettempdir(), f"voice_{voice.file_id}.wav")
+            
+            await bot.download_file(file_info.file_path, ogg_path)
+            
+            # Конвертируем в WAV в отдельном потоке
+            await asyncio.get_event_loop().run_in_executor(
+                None, self._convert_ogg_to_wav, ogg_path, wav_path
+            )
+            
+            # Распознаем речь в отдельном потоке
+            text = await asyncio.get_event_loop().run_in_executor(
+                None, self._recognize_speech, wav_path
+            )
+            
+            logger.info(f"Голосовое сообщение распознано: {len(text) if text else 0} символов")
+            return text
+            
         except Exception as e:
             logger.error(f"Ошибка обработки голосового сообщения: {e}")
             return None
+        finally:
+            # Очищаем временные файлы
+            for file_path in [ogg_path, wav_path]:
+                if file_path and os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        logger.warning(f"Не удалось удалить временный файл {file_path}: {e}")
+    
+    def _convert_ogg_to_wav(self, ogg_path: str, wav_path: str):
+        """Конвертация OGG в WAV"""
+        try:
+            audio = AudioSegment.from_file(ogg_path)
+            audio.export(wav_path, format="wav")
+        except Exception as e:
+            logger.error(f"Ошибка конвертации аудио: {e}")
+            raise
+    
+    def _recognize_speech(self, wav_path: str) -> Optional[str]:
+        """Распознавание речи из WAV файла"""
+        try:
+            recognizer = sr.Recognizer()
+            
+            with sr.AudioFile(wav_path) as source:
+                # Настройка для лучшего распознавания
+                recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                audio_data = recognizer.record(source)
+            
+            # Распознавание с помощью Google Speech API
+            text = recognizer.recognize_google(audio_data, language="ru-RU")
+            return text
+            
+        except sr.UnknownValueError:
+            logger.warning("Не удалось распознать речь в голосовом сообщении")
+            return "❌ Не удалось распознать речь. Попробуйте говорить четче или отправьте текстовое сообщение."
+        except sr.RequestError as e:
+            logger.error(f"Ошибка запроса к сервису распознавания: {e}")
+            return "⚠️ Ошибка сервиса распознавания речи. Попробуйте позже или отправьте текстовое сообщение."
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка распознавания речи: {e}")
+            return "❌ Ошибка обработки голосового сообщения. Отправьте текстовое сообщение."

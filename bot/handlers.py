@@ -430,16 +430,33 @@ async def handle_text_comment(message: Message, state: FSMContext):
     await show_preview(message, state)
 
 
-@router.message(F.voice, StateFilter(ComplaintStates.entering_comment))
+@router.message((F.voice | F.audio), StateFilter(ComplaintStates.entering_comment))
 async def handle_voice_comment(message: Message, state: FSMContext):
-    """Обработка голосового комментария"""
-    comment = await media_handler.process_voice_message(message.bot, message.voice)
+    """Обработка голосового или аудио комментария"""
+    # Показываем индикатор обработки
+    processing_msg = await message.answer("🎤 Анализируем аудио...")
     
-    if comment:
-        await state.update_data(comment=comment)
-        await show_preview(message, state)
-    else:
-        await message.answer("❌ Ошибка обработки голосового сообщения. Попробуйте отправить текст.")
+    try:
+        if message.voice:
+            file = message.voice
+        else:
+            file = message.audio
+
+        comment = await media_handler.process_voice_message(message.bot, file)
+        
+        # Удаляем сообщение об обработке
+        await processing_msg.delete()
+        
+        if comment:
+            await state.update_data(comment=comment)
+            await show_preview(message, state)
+        else:
+            await message.answer("❌ Не удалось распознать речь. Попробуйте отправить текстовое сообщение.")
+            
+    except Exception as e:
+        # Удаляем сообщение об обработке в случае ошибки
+        await processing_msg.delete()
+        await message.answer("❌ Ошибка обработки аудио. Попробуйте отправить текстовое сообщение.")
 
 
 async def show_preview(message: Message, state: FSMContext):
@@ -556,11 +573,40 @@ async def handle_other_messages(message: Message, state: FSMContext):
         await message.answer(Messages.ACCESS_DENIED.value)
         return
     
-    # Если пользователь в состоянии загрузки фото, но отправил текст
+    # Отладочная информация
     current_state = await state.get_state()
+    message_type = "unknown"
+    if message.text:
+        message_type = "text"
+    elif message.voice:
+        message_type = "voice"
+    elif message.audio:
+        message_type = "audio"
+    elif message.photo:
+        message_type = "photo"
+    
+    logger.info(f"Необработанное сообщение: тип={message_type}, состояние={current_state}, пользователь={message.from_user.id}")
+    
+    # Если пользователь в состоянии загрузки фото, но отправил текст
     if current_state == ComplaintStates.uploading_photos:
         await message.answer("📷 Отправьте фотографию или нажмите кнопку для пропуска/перехода к комментарию.")
         return
+    
+    # Если пользователь в состоянии ввода комментария, но сообщение не обработалось
+    if current_state == ComplaintStates.entering_comment:
+        if message.voice:
+            await message.answer("🎤 Обрабатываю голосовое сообщение...")
+            comment = await media_handler.process_voice_message(message.bot, message.voice)
+            if comment:
+                await state.update_data(comment=comment)
+                await show_preview(message, state)
+                return
+            else:
+                await message.answer("❌ Ошибка обработки голосового сообщения. Попробуйте отправить текст.")
+                return
+        else:
+            await message.answer("💬 Отправьте текстовое или голосовое сообщение с комментарием.")
+            return
     
     text = "❓ Не понимаю команду.\n\nИспользуйте /start для начала работы с ботом."
     await message.answer(text)
