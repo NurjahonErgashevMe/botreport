@@ -2,6 +2,7 @@
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import pytz
 import logging
 import asyncio
 from typing import List, Optional
@@ -67,7 +68,8 @@ class GoogleSheetsManager:
     
     def _sync_add_complaint(self, category: str, master: str, comment: str, photo_urls: List[str] = None) -> bool:
         try:
-            now = datetime.now()
+            moscow_tz = pytz.timezone('Europe/Moscow')
+            now = datetime.now(moscow_tz)
             date_str = now.strftime('%d.%m.%Y')
             time_str = now.strftime('%H:%M')
             
