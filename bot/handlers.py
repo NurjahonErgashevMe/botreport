@@ -98,7 +98,7 @@ async def back_to_main(message: Message, state: FSMContext):
 
 @router.message(F.text == ButtonTexts.SEND_COMPLAINT.value)
 async def start_complaint_handler(message: Message, state: FSMContext):
-    """Обработчик кнопки отправки замечания"""
+    """Обработчик кнопки отправки предложения"""
     # Проверяем доступ
     if not await has_access(message.from_user.id):
         await message.answer("❌ Доступ запрещён")
@@ -300,10 +300,10 @@ async def cancel_delete_employee(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(Messages.EMPLOYEES_MENU.value, reply_markup=Keyboards.employees_menu())
 
 
-# === ПРОЦЕСС ПОДАЧИ ЖАЛОБЫ ===
+# === ПРОЦЕСС ПОДАЧИ ПРЕДЛОЖЕНИЯ ===
 
 async def start_complaint_process(message: Message, state: FSMContext):
-    """Начало процесса подачи жалобы"""
+    """Начало процесса подачи предложения"""
     await state.set_state(ComplaintStates.choosing_category)
     
     keyboard = Keyboards.categories()
@@ -369,7 +369,7 @@ async def skip_photos(message: Message, state: FSMContext):
 
 @router.message(F.text == ButtonTexts.CANCEL_COMPLAINT.value)
 async def cancel_complaint(message: Message, state: FSMContext):
-    """Отмена подачи жалобы"""
+    """Отмена подачи предложения"""
     await back_to_main(message, state)
 
 
@@ -498,12 +498,12 @@ async def show_preview(message: Message, state: FSMContext):
         photos_text = "\n📷 Фотографий: ❌"
     
     preview_text = (
-        "📋 Предварительный просмотр замечания:\n\n"
+        "📋 Предварительный просмотр:\n\n"
         f"📂 Категория: {data['category']}\n"
         f"👤 Мастер: {data['master']}\n"
         f"💬 Комментарий: {data['comment']}"
         f"{photos_text}\n\n"
-        "Сохранить замечание?"
+        "Отправить предложение?"
     )
     
     keyboard = Keyboards.preview()
@@ -512,11 +512,11 @@ async def show_preview(message: Message, state: FSMContext):
 
 @router.message(F.text == ButtonTexts.SAVE.value, StateFilter(ComplaintStates.preview))
 async def save_complaint(message: Message, state: FSMContext):
-    """Сохранение жалобы"""
+    """Отправка предложения"""
     data = await state.get_data()
     
     # Показываем индикатор загрузки
-    loading_msg = await message.answer("⏳ Обрабатываем замечание...")
+    loading_msg = await message.answer("⏳ Обрабатываем предложение...")
     
     try:
         # Получаем имя сотрудника
@@ -557,7 +557,7 @@ async def save_complaint(message: Message, state: FSMContext):
         if db_success and sheets_success:
             text = Messages.COMPLAINT_SAVED.value
         elif db_success:
-            text = "✅ Замечание сохранено в базу данных!\n⚠️ Ошибка отправки в Google Sheets."
+            text = "✅ Предложение сохранено в базу данных!\n⚠️ Ошибка отправки в Google Sheets."
         else:
             text = Messages.COMPLAINT_ERROR.value
         
@@ -566,20 +566,20 @@ async def save_complaint(message: Message, state: FSMContext):
         await state.clear()
         
     except Exception as e:
-        logger.error(f"Ошибка сохранения жалобы: {e}")
+        logger.error(f"Ошибка отправки предложения: {e}")
         await loading_msg.delete()
         await message.answer(Messages.COMPLAINT_ERROR.value, reply_markup=Keyboards.send_another())
         await state.clear()
 
 @router.message(F.text == ButtonTexts.DELETE_AND_RESTART.value, StateFilter(ComplaintStates.preview))
 async def restart_complaint(message: Message, state: FSMContext):
-    """Перезапуск процесса подачи жалобы"""
+    """Перезапуск процесса подачи предложения"""
     await state.clear()
     await start_complaint_process(message, state)
 
 @router.message(F.text == ButtonTexts.SEND_ANOTHER.value)
 async def send_another_complaint(message: Message, state: FSMContext):
-    """Отправка ещё одного замечания"""
+    """Отправка ещё одного предложения"""
     await start_complaint_process(message, state)
 
 
