@@ -73,21 +73,41 @@ class GoogleSheetsManager:
             date_str = now.strftime('%d.%m.%Y')
             time_str = now.strftime('%H:%M')
             
-            row_data = [date_str, time_str, category, master, '', '', '', comment]
-            self.worksheet.append_row(row_data)
+            # Находим следующую пустую строку
+            all_values = self.worksheet.get_all_values()
+            next_row = len(all_values) + 1
             
-            last_row = len(self.worksheet.get_all_values())
+            data_to_update = {
+                SHEETS_COLUMNS['DATE']: date_str,
+                SHEETS_COLUMNS['TIME']: time_str,
+                SHEETS_COLUMNS['CATEGORY']: category,
+                SHEETS_COLUMNS['MASTER']: master,
+                SHEETS_COLUMNS['COMMENT']: comment
+            }
             
             photo_urls = photo_urls or []
             photo_columns = [SHEETS_COLUMNS['PHOTO_1'], SHEETS_COLUMNS['PHOTO_2'], SHEETS_COLUMNS['PHOTO_3']]
             
             for i, photo_url in enumerate(photo_urls[:3]):
                 if photo_url:
-                    cell_address = f"{photo_columns[i]}{last_row}"
-                    formula = f'=IMAGE("{photo_url}")'
-                    self.worksheet.update(cell_address, formula, value_input_option='USER_ENTERED')
+                    data_to_update[photo_columns[i]] = f'=IMAGE("{photo_url}")'
+                else:
+                    data_to_update[photo_columns[i]] = ''
             
-            logger.info(f"Жалоба добавлена: {category} - {master}")
+            for i in range(len(photo_urls), 3):
+                data_to_update[photo_columns[i]] = ''
+            
+            updates = []
+            for column, value in data_to_update.items():
+                cell_address = f"{column}{next_row}"
+                updates.append({
+                    'range': cell_address,
+                    'values': [[value]]
+                })
+            
+            self.worksheet.batch_update(updates, value_input_option='USER_ENTERED')
+            
+            logger.info(f"Жалоба добавлена в строку {next_row}: {category} - {master}")
             return True
             
         except Exception as e:
