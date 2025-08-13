@@ -7,6 +7,8 @@ import logging
 from typing import List, Optional, Tuple
 from datetime import datetime
 
+from .config import TELEGRAM_ADMIN_ID
+
 logger = logging.getLogger(__name__)
 
 
@@ -241,13 +243,18 @@ class Database:
             bool: Успешность операции
         """
         try:
-            # Получаем ID сотрудника
-            employee = await self.get_employee_by_telegram_id(employee_telegram_id)
-            if not employee:
-                logger.error(f"Сотрудник с Telegram ID {employee_telegram_id} не найден")
-                return False
-            
-            employee_id = employee[0]
+            # Проверяем, является ли пользователь администратором
+            if int(employee_telegram_id) == int(TELEGRAM_ADMIN_ID):
+                # Для админа используем специальный ID (например, 0 или -1)
+                employee_id = 0
+            else:
+                # Получаем ID сотрудника
+                employee = await self.get_employee_by_telegram_id(employee_telegram_id)
+                if not employee:
+                    logger.error(f"Сотрудник с Telegram ID {employee_telegram_id} не найден")
+                    return False
+                
+                employee_id = employee[0]
             
             # Преобразуем список URL в строку
             photo_urls_str = ",".join(photo_urls) if photo_urls else ""

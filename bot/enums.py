@@ -35,6 +35,7 @@ class CallbackData(Enum):
     SKIP_PHOTOS = "skip_photos"
     SAVE_COMPLAINT = "save_complaint"
     RESTART_COMPLAINT = "restart"
+    RETRY_COMMENT = "retry_comment"
 
 
 class Categories(Enum):
@@ -141,3 +142,6 @@ class ButtonTexts(Enum):
     
     # Отмена
     CANCEL_COMPLAINT = "❌ Отменить"
+    
+    # Повтор комментария
+    RETRY_COMMENT = "🎤 Повторить комментарий"

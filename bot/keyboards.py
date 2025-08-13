@@ -154,3 +154,14 @@ class Keyboards:
             )]
         ]
         return InlineKeyboardMarkup(inline_keyboard=buttons)
+    
+    @staticmethod
+    def retry_comment() -> InlineKeyboardMarkup:
+        """Кнопка для повтора комментария при ошибке распознавания речи"""
+        buttons = [
+            [InlineKeyboardButton(
+                text=ButtonTexts.RETRY_COMMENT.value,
+                callback_data=CallbackData.RETRY_COMMENT.value
+            )]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=buttons)

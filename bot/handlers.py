@@ -26,7 +26,7 @@ sheets_manager = GoogleSheetsManager()
 
 async def is_admin(user_id: int) -> bool:
     """Проверка, является ли пользователь администратором"""
-    return user_id == TELEGRAM_ADMIN_ID
+    return int(user_id) == int(TELEGRAM_ADMIN_ID)
 
 
 async def has_access(user_id: int) -> bool:
@@ -326,18 +326,23 @@ async def choose_category(message: Message, state: FSMContext):
     
     category = message.text
     await state.update_data(category=category)
+
+    user_id = message.from_user.id
     
-    # Автоматически определяем мастера по Telegram ID отправителя
-    employee = await db.get_employee_by_telegram_id(message.from_user.id)
-    
-    if not employee:
-        await message.answer(
-            "❌ Ошибка: вы не найдены в списке сотрудников. Обратитесь к администратору.",
-            reply_markup=Keyboards.back_to_main()
-        )
-        return
-    
-    master_name = employee[1]  # employee[1] содержит имя сотрудника
+
+    if await is_admin(user_id):
+        master_name = "Администратор"
+    else:
+        employee = await db.get_employee_by_telegram_id(user_id)
+        
+        if not employee:
+            await message.answer(
+                "❌ Ошибка: вы не найдены в списке сотрудников. Обратитесь к администратору.",
+                reply_markup=Keyboards.back_to_main()
+            )
+            return
+        
+        master_name = employee[1]  # employee[1] содержит имя сотрудника
     await state.update_data(master=master_name)
     
     await state.set_state(ComplaintStates.uploading_photos)
@@ -430,6 +435,19 @@ async def handle_text_comment(message: Message, state: FSMContext):
     await show_preview(message, state)
 
 
+@router.callback_query(F.data == CallbackData.RETRY_COMMENT.value, StateFilter(ComplaintStates.entering_comment))
+async def retry_comment_callback(callback: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки повтора комментария"""
+    await callback.answer()
+    
+    # Удаляем сообщение с кнопкой
+    await callback.message.delete()
+    
+    # Показываем сообщение для ввода комментария заново
+    keyboard = Keyboards.comment_input()
+    await callback.message.answer(Messages.ENTER_COMMENT.value, reply_markup=keyboard)
+
+
 @router.message((F.voice | F.audio), StateFilter(ComplaintStates.entering_comment))
 async def handle_voice_comment(message: Message, state: FSMContext):
     """Обработка голосового или аудио комментария"""
@@ -451,12 +469,20 @@ async def handle_voice_comment(message: Message, state: FSMContext):
             await state.update_data(comment=comment)
             await show_preview(message, state)
         else:
-            await message.answer("❌ Не удалось распознать речь. Попробуйте отправить текстовое сообщение.")
+            keyboard = Keyboards.retry_comment()
+            await message.answer(
+                "❌ Не удалось распознать речь. Попробуйте отправить текстовое сообщение или нажмите кнопку ниже для повтора.",
+                reply_markup=keyboard
+            )
             
     except Exception as e:
         # Удаляем сообщение об обработке в случае ошибки
         await processing_msg.delete()
-        await message.answer("❌ Ошибка обработки аудио. Попробуйте отправить текстовое сообщение.")
+        keyboard = Keyboards.retry_comment()
+        await message.answer(
+            "❌ Ошибка обработки аудио. Попробуйте отправить текстовое сообщение или нажмите кнопку ниже для повтора.",
+            reply_markup=keyboard
+        )
 
 
 async def show_preview(message: Message, state: FSMContext):
@@ -594,16 +620,11 @@ async def handle_other_messages(message: Message, state: FSMContext):
     
     # Если пользователь в состоянии ввода комментария, но сообщение не обработалось
     if current_state == ComplaintStates.entering_comment:
-        if message.voice:
-            await message.answer("🎤 Обрабатываю голосовое сообщение...")
-            comment = await media_handler.process_voice_message(message.bot, message.voice)
-            if comment:
-                await state.update_data(comment=comment)
-                await show_preview(message, state)
-                return
-            else:
-                await message.answer("❌ Ошибка обработки голосового сообщения. Попробуйте отправить текст.")
-                return
+        if message.voice or message.audio:
+            # Голосовые сообщения должны обрабатываться специальным хендлером
+            # Если мы здесь, значит что-то пошло не так
+            await message.answer("💬 Отправьте текстовое сообщение с комментарием.")
+            return
         else:
             await message.answer("💬 Отправьте текстовое или голосовое сообщение с комментарием.")
             return

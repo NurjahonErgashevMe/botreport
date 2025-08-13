@@ -213,10 +213,10 @@ class MediaHandler:
             
         except sr.UnknownValueError:
             logger.warning("Не удалось распознать речь в голосовом сообщении")
-            return "❌ Не удалось распознать речь. Попробуйте говорить четче или отправьте текстовое сообщение."
+            return None
         except sr.RequestError as e:
             logger.error(f"Ошибка запроса к сервису распознавания: {e}")
-            return "⚠️ Ошибка сервиса распознавания речи. Попробуйте позже или отправьте текстовое сообщение."
+            return None
         except Exception as e:
             logger.error(f"Неожиданная ошибка распознавания речи: {e}")
-            return "❌ Ошибка обработки голосового сообщения. Отправьте текстовое сообщение."
+            return None
