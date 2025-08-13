@@ -384,7 +384,7 @@ async def handle_photo(message: Message, state: FSMContext):
         return
     
     # Получаем информацию о фотографии (без загрузки в S3)
-    photo_info = await media_handler.get_photo_info(message.bot, message.photo[-1])
+    photo_info = await media_handler.get_photo_info(message.bot, message)
     
     if photo_info:
         # Сохраняем информацию о фото для последующей загрузки в S3

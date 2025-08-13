@@ -43,41 +43,42 @@ class MediaHandler:
         
         return f"{clean_name}_{timestamp}_{unique_id}.{file_extension}"
     
-    async def upload_photo_to_s3(self, bot: Bot, photo: PhotoSize, employee_name: str) -> Optional[str]:
+    async def get_photo_info(self, bot: Bot, message) -> Optional[dict]:
         try:
-            # Получаем файл из Telegram
-            file = await bot.get_file(photo.file_id)
+            # Если фото прислано как файл (документ) → без сжатия
+            if message.document:
+                file = await bot.get_file(message.document.file_id)
+                width = None
+                height = None
+                file_size = message.document.file_size
+
+            # Если как фото → берём последний элемент (самое большое доступное)
+            elif message.photo:
+                largest_photo = message.photo[-1]
+                file = await bot.get_file(largest_photo.file_id)
+                width = largest_photo.width
+                height = largest_photo.height
+                file_size = largest_photo.file_size
+
+            else:
+                logger.error("В сообщении нет фото или документа")
+                return None
+
             telegram_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-            
-            # Скачиваем файл
-            async with aiohttp.ClientSession() as session:
-                async with session.get(telegram_url) as response:
-                    if response.status != 200:
-                        logger.error(f"Ошибка скачивания фото из Telegram: {response.status}")
-                        return None
-                    
-                    photo_data = await response.read()
-            
-            # Генерируем уникальное имя файла
-            filename = self._generate_unique_filename(employee_name)
-            
-            # Загружаем в S3
-            await asyncio.get_event_loop().run_in_executor(
-                None, 
-                self._sync_upload_to_s3, 
-                photo_data, 
-                filename
-            )
-            
-            # Формируем публичную ссылку
-            public_url = f"{S3_ENDPOINT_URL}/{S3_BUCKET_NAME}/{filename}"
-            
-            logger.info(f"Фото загружено в S3: {filename} ({photo.width}x{photo.height})")
-            return public_url
-            
+
+            return {
+                'file_id': file.file_id,
+                'file_path': file.file_path,
+                'telegram_url': telegram_url,
+                'width': width,
+                'height': height,
+                'file_size': file_size
+            }
+
         except Exception as e:
-            logger.error(f"Ошибка загрузки фото в S3: {e}")
+            logger.error(f"Ошибка получения информации о фото: {e}")
             return None
+
     
     def _sync_upload_to_s3(self, photo_data: bytes, filename: str):
         try:
@@ -91,27 +92,8 @@ class MediaHandler:
         except ClientError as e:
             logger.error(f"Ошибка загрузки в S3: {e}")
             raise
-    
-    async def get_photo_info(self, bot: Bot, photo: PhotoSize) -> Optional[dict]:
-        try:
-            file = await bot.get_file(photo.file_id)
-            telegram_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-            
-            photo_info = {
-                'file_id': photo.file_id,
-                'file_path': file.file_path,
-                'telegram_url': telegram_url,
-                'width': photo.width,
-                'height': photo.height,
-                'file_size': photo.file_size
-            }
-            
-            logger.info(f"Получена информация о фото: {photo.file_id} ({photo.width}x{photo.height})")
-            return photo_info
-                
-        except Exception as e:
-            logger.error(f"Ошибка получения информации о фото: {e}")
-            return None
+
+
     
     async def upload_photos_to_s3(self, bot: Bot, photo_infos: list, employee_name: str) -> list:
         s3_urls = []
