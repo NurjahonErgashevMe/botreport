@@ -31,14 +31,14 @@ MAX_PHOTOS = 3
 # Google Sheets структура
 SHEETS_START_ROW = 1
 SHEETS_COLUMNS = {
-    'DATE': 'A',        # Дата
-    'TIME': 'B',        # Время
-    'CATEGORY': 'C',    # Категория
-    'MASTER': 'D',      # Мастер
-    'PHOTO_1': 'E',     # Фото 1
-    'PHOTO_2': 'F',     # Фото 2
-    'PHOTO_3': 'G',     # Фото 3
-    'COMMENT': 'H'      # Комментарий
+    'DATE': 'B',        # Дата
+    'TIME': 'C',        # Время
+    'CATEGORY': 'D',    # Категория
+    'MASTER': 'E',      # Мастер
+    'PHOTO_1': 'F',     # Фото 1
+    'PHOTO_2': 'G',     # Фото 2
+    'PHOTO_3': 'H',     # Фото 3
+    'COMMENT': 'I'      # Комментарий
 }
 
 # Проверка обязательных переменных
